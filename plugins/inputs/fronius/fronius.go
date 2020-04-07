@@ -9,6 +9,10 @@ import (
 	"github.com/influxdata/telegraf/plugins/inputs"
 )
 
+const (
+	measurementDevice = "fronius_device"
+)
+
 type Fronius struct {
 	Devices []string `toml:"devices"`
 }
@@ -33,7 +37,13 @@ func (s *Fronius) gather(device string, acc telegraf.Accumulator) error {
 		HttpClient: http.DefaultClient,
 		BaseUrl:    device,
 	}
-	data, err := client.Get3PInverterData()
+
+	phaseData, err := client.Get3PInverterData()
+	if err != nil {
+		return err
+	}
+
+	commonData, err := client.GetCommonInverterData()
 	if err != nil {
 		return err
 	}
@@ -41,10 +51,23 @@ func (s *Fronius) gather(device string, acc telegraf.Accumulator) error {
 	timestamp := time.Now()
 
 	acc.AddFields(
-		"phase4",
+		measurementDevice,
 		map[string]interface{}{
-			"current": float64(data.Phase1.Current) / float64(fronius.Ampere),
-			"voltage": float64(data.Phase1.Voltage) / float64(fronius.Volt),
+			"p1_current":  float64(phaseData.Phase1.Current) / float64(fronius.Ampere),
+			"p1_voltage":  float64(phaseData.Phase1.Voltage) / float64(fronius.Volt),
+			"p2_current":  float64(phaseData.Phase2.Current) / float64(fronius.Ampere),
+			"p2_voltage":  float64(phaseData.Phase2.Voltage) / float64(fronius.Volt),
+			"p3_current":  float64(phaseData.Phase3.Current) / float64(fronius.Ampere),
+			"p3_voltage":  float64(phaseData.Phase3.Voltage) / float64(fronius.Volt),
+			"accurrent":   float64(commonData.ACCurrent) / float64(fronius.Ampere),
+			"acvoltage":   float64(commonData.ACVoltage) / float64(fronius.Volt),
+			"aceffect":    float64(commonData.ACEffect) / float64(fronius.Watt),
+			"dccurrent":   float64(commonData.DCCurrent) / float64(fronius.Ampere),
+			"dcvoltage":   float64(commonData.DCVoltage) / float64(fronius.Volt),
+			"dayenergy":   float64(commonData.DayEnergy) / float64(fronius.Watthour),
+			"yearenergy":  float64(commonData.YearEnergy) / float64(fronius.Watthour),
+			"totalenergy": float64(commonData.TotalEnergy) / float64(fronius.Watthour),
+			"frequency":   float64(commonData.Frequency) / float64(fronius.Hertz),
 		},
 		nil,
 		timestamp)
@@ -55,7 +78,7 @@ func (s *Fronius) gather(device string, acc telegraf.Accumulator) error {
 func (s *Fronius) Gather(acc telegraf.Accumulator) error {
 	for _, device := range s.Devices {
 		if err := s.gather(device, acc); err != nil {
-			return err
+			acc.AddError(err)
 		}
 	}
 	return nil
